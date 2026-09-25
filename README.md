@@ -2,13 +2,14 @@
 
 Gerador de laudos de eletrocardiograma (adulto e pediátrico) em página única, com pré-visualização A4 timbrada, assinatura, geração de PDF e funcionamento offline como aplicativo instalável (PWA).
 
-**Versão atual:** `v.e4436555`
+**Versão atual:** `v.ae4e9f9c`
 **Tema:** dark, alinhado ao editor de Ecocardiograma ENCOR.
 
 ---
 
 ## Novidades desta versão
 
+- **Médico responsável selecionável:** seletor na barra superior (Dr. Genius Costa · Dr. Diego Rafael). A assinatura, nome, CRM e RQE do laudo acompanham o médico escolhido no preview, no PDF, no PDF p/ VIDaaS e na impressão. A escolha fica salva no navegador.
 - **Dropdown de ritmo simplificado:** Sinusal · Atrial · Juncional · Ventricular.
 - **Motor de conclusão automático:** deriva as linhas da conclusão a partir do ritmo e das medidas (FC, iPR, QRS, eixo, morfologia de V1), reconciliando a cada alteração e preservando o texto manual.
 - **Chip "Arritmia sinusal"** com o comentário de variante fisiológica.
@@ -20,7 +21,7 @@ Gerador de laudos de eletrocardiograma (adulto e pediátrico) em página única,
 
 ### Editor
 - Três abas: Identificação · Medidas · Conclusão.
-- Pré-visualização A4 em tempo real com timbre ENCOR e assinatura do Dr. Genius Costa.
+- Pré-visualização A4 em tempo real com timbre ENCOR e assinatura do médico responsável (seletor na barra superior).
 - Geração de PDF (html2canvas + jsPDF), PDF com slot para VIDaaS, e impressão direta.
 - Banco de pacientes (localStorage) com **autocomplete de nomes**, **filtros** (Todos/Adulto/Pediátrico) e **ordenação** (salvos, exame, nome).
 - Atalhos: `Ctrl+S` salvar · `Ctrl+L` banco · `Ctrl+N` novo · `Ctrl+Shift+S` PDF · `Alt+1/2/3` abas · `Ctrl+←/→` aba anterior/próxima.
@@ -73,6 +74,13 @@ Conclusão padrão: **"Eletrocardiograma dentro dos limites da normalidade."** (
 
 ---
 
+### Médicos / assinaturas
+- Cadastro em `index.html`, objeto `MEDICOS` (logo após `DEFAULT_SIGNATURE`): `nome`, `crm`, `qualificacoes` (uma linha cada), `rubrica` (PNG transparente em base64, mesmo padrão da rubrica do Dr. Genius) e `sigKey` (chave própria para a assinatura customizada).
+- **Adicionar um médico:** incluir uma nova entrada em `MEDICOS` — o seletor e o bloco de assinatura são montados automaticamente a partir dela.
+- O botão **✍️ Trocar assinatura** grava uma imagem customizada apenas para o médico selecionado; **↺ Restaurar padrão** volta à rubrica cadastrada.
+
+---
+
 ## Arquivos do repositório
 
 | Arquivo | Função |
@@ -99,7 +107,7 @@ Substituição da versão anterior: faça upload dos arquivos novos sobrescreven
 A cada nova versão, **incremente o número do cache** em `sw.js` (linha 2):
 
 ```js
-const CACHE = "ecg-encor-v2";  // -> "ecg-encor-v3" na próxima publicação
+const CACHE = "ecg-encor-v3";  // -> "ecg-encor-v4" na próxima publicação
 ```
 
 Sem isso, o service worker pode continuar servindo a versão antiga em cache.
