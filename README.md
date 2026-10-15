@@ -2,13 +2,14 @@
 
 Gerador de laudos de eletrocardiograma (adulto e pediátrico) em página única, com pré-visualização A4 timbrada, assinatura, geração de PDF e funcionamento offline como aplicativo instalável (PWA).
 
-**Versão atual:** `v.ae4e9f9c`
+**Versão atual:** `v.ee2d41fe`
 **Tema:** dark, alinhado ao editor de Ecocardiograma ENCOR.
 
 ---
 
 ## Novidades desta versão
 
+- **Anexo do ECG visível no preview:** ao anexar o traçado (imagem ou PDF), cada página aparece logo abaixo da folha do laudo, no mesmo formato em que entra no PDF.
 - **Médico responsável selecionável:** seletor na barra superior (Dr. Genius Costa · Dr. Diego Rafael). A assinatura, nome, CRM e RQE do laudo acompanham o médico escolhido no preview, no PDF, no PDF p/ VIDaaS e na impressão. A escolha fica salva no navegador.
 - **Dropdown de ritmo simplificado:** Sinusal · Atrial · Juncional · Ventricular.
 - **Motor de conclusão automático:** deriva as linhas da conclusão a partir do ritmo e das medidas (FC, iPR, QRS, eixo, morfologia de V1), reconciliando a cada alteração e preservando o texto manual.
@@ -107,7 +108,7 @@ Substituição da versão anterior: faça upload dos arquivos novos sobrescreven
 A cada nova versão, **incremente o número do cache** em `sw.js` (linha 2):
 
 ```js
-const CACHE = "ecg-encor-v3";  // -> "ecg-encor-v4" na próxima publicação
+const CACHE = "ecg-encor-v4";  // -> "ecg-encor-v5" na próxima publicação
 ```
 
 Sem isso, o service worker pode continuar servindo a versão antiga em cache.

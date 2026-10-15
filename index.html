@@ -253,6 +253,10 @@ body.modo-ped .adult-only{display:none;}
   .ecg-thumbs-lbl{width:100%;font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.4px;}
   .ecg-thumb{position:relative;width:84px;height:84px;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#000;}
   .ecg-thumb img{width:100%;height:100%;object-fit:cover;}
+  .ecg-page{width:100%;max-width:210mm;aspect-ratio:210/297;position:relative;background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.5);container-type:inline-size;}
+  .ecg-page-cap{position:absolute;top:3.37%;left:0;right:0;text-align:center;font-size:1.51cqw;line-height:1.4;color:#5a5a5a;font-family:Helvetica,Arial,sans-serif;}
+  .ecg-page img{position:absolute;top:6.06%;left:4.76%;width:90.48%;height:90.57%;object-fit:contain;object-position:top center;}
+  @media print{.ecg-page{display:none!important;}}
   .ecg-thumb-x{position:absolute;top:2px;right:2px;background:rgba(176,0,32,.92);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;cursor:pointer;line-height:1;}
 </style>
 </head>
@@ -261,7 +265,7 @@ body.modo-ped .adult-only{display:none;}
 <div class="topbar">
   <span class="inst-badge">ENCOR</span>
   <h1>Eletrocardiograma</h1>
-  <span class="tag">v.ae4e9f9c</span>
+  <span class="tag">v.ee2d41fe</span>
   <span class="modo-toggle" title="Modo do exame">
     <button id="btnAdulto" class="modo-btn active" onclick="setModo(false)">Adulto</button>
     <button id="btnPed" class="modo-btn" onclick="setModo(true)">Pediátrico</button>
@@ -568,6 +572,7 @@ body.modo-ped .adult-only{display:none;}
         </div>
       </div>
     </div>
+    <div id="ecgPages" style="display:contents"></div>
   </div>
 
 </div>
@@ -1137,6 +1142,7 @@ function render() {
   const _fcN = parseFloat(document.getElementById("fc").value), _qrsN = parseFloat(document.getElementById("qrs").value);
   const _brH = document.getElementById("brugadaHint"); if (_brH) _brH.style.display = (_qrsN >= 120 && _fcN >= 100) ? "block" : "none";
   document.getElementById("previewContent").innerHTML = html;
+  updateEcgCaptions();
   document.getElementById("previewFooter").innerHTML =
     `<div>Barreiras- Bahia</div><div>${formatDatePtBr(dataISO) || formatDatePtBr(todayISO())}</div>`;
 }
@@ -1416,9 +1422,25 @@ async function handleEcgUpload(ev) {
 function renderEcgThumbs() {
   const box = document.getElementById("ecgThumbs");
   if (!box) return;
+  renderEcgPages();
   if (!ecgAttachments.length) { box.innerHTML = ""; return; }
   box.innerHTML = `<div class="ecg-thumbs-lbl">Anexos do ECG (entram no PDF): ${ecgAttachments.length}</div>` +
     ecgAttachments.map((a, i) => `<div class="ecg-thumb"><img src="${a.dataURL}" alt=""><button class="ecg-thumb-x" onclick="removeEcgAttachment(${i})" title="Remover anexo">\u2715</button></div>`).join("");
+}
+function ecgCaption() {
+  const nome = (document.getElementById("nome").value || "").trim();
+  return `ECG \u2014 ${nome || "LAUDO ECG"}${document.getElementById("dataExame").value ? " \u2014 " + ((formatDatePtBr(document.getElementById("dataExame").value).split(",")[1] || "").trim()) : ""}`;
+}
+// Páginas do anexo exibidas abaixo da folha do laudo, como ficarão no PDF
+function renderEcgPages() {
+  const box = document.getElementById("ecgPages");
+  if (!box) return;
+  const cap = ecgCaption();
+  box.innerHTML = ecgAttachments.map(a => `<div class="ecg-page"><div class="ecg-page-cap">${cap}</div><img src="${a.dataURL}" alt="${a.name}"></div>`).join("");
+}
+function updateEcgCaptions() {
+  const cap = ecgCaption();
+  document.querySelectorAll("#ecgPages .ecg-page-cap").forEach(el => { el.textContent = cap; });
 }
 function removeEcgAttachment(i) { ecgAttachments.splice(i, 1); renderEcgThumbs(); }
 
@@ -1807,7 +1829,7 @@ async function savePDF(forVIDaaS = false) {
 
     // Anexos: traçado de ECG (imagens / páginas de PDF rasterizadas) — laudo autocontido
     if (ecgAttachments.length) {
-      const cap = `ECG \u2014 ${nome || "LAUDO ECG"}${document.getElementById("dataExame").value ? " \u2014 " + ((formatDatePtBr(document.getElementById("dataExame").value).split(",")[1] || "").trim()) : ""}`;
+      const cap = ecgCaption();
       for (const att of ecgAttachments) {
         pdf.addPage();
         const img = await loadImg(att.dataURL);
