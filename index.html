@@ -255,6 +255,7 @@ body.modo-ped .adult-only{display:none;}
   .ecg-thumb img{width:100%;height:100%;object-fit:cover;}
   .ecg-page{width:100%;max-width:210mm;aspect-ratio:210/297;position:relative;background:#fff;box-shadow:0 4px 24px rgba(0,0,0,.5);container-type:inline-size;}
   .ecg-page-cap{position:absolute;top:3.37%;left:0;right:0;text-align:center;font-size:1.51cqw;line-height:1.4;color:#5a5a5a;font-family:Helvetica,Arial,sans-serif;}
+  .ecg-page.full img{top:0;left:0;width:100%;height:100%;object-position:center;}
   .ecg-page img{position:absolute;top:6.06%;left:4.76%;width:90.48%;height:90.57%;object-fit:contain;object-position:top center;}
   @media print{.ecg-page{width:210mm!important;height:297mm!important;max-width:none!important;aspect-ratio:unset!important;box-shadow:none!important;margin:0!important;break-before:page;page-break-before:always;page-break-inside:avoid;}}
   .ecg-thumb-x{position:absolute;top:2px;right:2px;background:rgba(176,0,32,.92);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:11px;cursor:pointer;line-height:1;}
@@ -265,7 +266,7 @@ body.modo-ped .adult-only{display:none;}
 <div class="topbar">
   <span class="inst-badge">ENCOR</span>
   <h1>Eletrocardiograma</h1>
-  <span class="tag">v.91d27eca</span>
+  <span class="tag">v.ed0ab99b</span>
   <span class="modo-toggle" title="Modo do exame">
     <button id="btnAdulto" class="modo-btn active" onclick="setModo(false)">Adulto</button>
     <button id="btnPed" class="modo-btn" onclick="setModo(true)">Pediátrico</button>
@@ -1407,7 +1408,7 @@ async function handleEcgUpload(ev) {
       if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
         flash("⏳ Processando PDF anexado...");
         const imgs = await pdfToImages(f);
-        imgs.forEach((d, idx) => ecgAttachments.push({ dataURL: d, name: f.name + (imgs.length > 1 ? ` (p.${idx + 1})` : ""), kind: "image" }));
+        imgs.forEach((d, idx) => ecgAttachments.push({ dataURL: d, name: f.name + (imgs.length > 1 ? ` (p.${idx + 1})` : ""), kind: "pdf" }));
       } else if (f.type.startsWith("image/")) {
         ecgAttachments.push({ dataURL: await fileToDataURL(f), name: f.name, kind: "image" });
       } else {
@@ -1436,7 +1437,7 @@ function renderEcgPages() {
   const box = document.getElementById("ecgPages");
   if (!box) return;
   const cap = ecgCaption();
-  box.innerHTML = ecgAttachments.map(a => `<div class="ecg-page"><div class="ecg-page-cap">${cap}</div><img src="${a.dataURL}" alt="${a.name}"></div>`).join("");
+  box.innerHTML = ecgAttachments.map(a => `<div class="ecg-page${a.kind === "pdf" ? " full" : ""}">${a.kind === "pdf" ? "" : `<div class="ecg-page-cap">${cap}</div>`}<img src="${a.dataURL}" alt="${a.name}"></div>`).join("");
 }
 function updateEcgCaptions() {
   const cap = ecgCaption();
@@ -1833,13 +1834,14 @@ async function savePDF(forVIDaaS = false) {
       for (const att of ecgAttachments) {
         pdf.addPage();
         const img = await loadImg(att.dataURL);
-        const margin = 10, capH = 8;
+        const full = att.kind === "pdf"; // folha do aparelho já traz cabeçalho/identificação
+        const margin = full ? 0 : 10, capH = full ? 0 : 8;
         const maxW = 210 - 2 * margin, maxH = 297 - 2 * margin - capH;
         const scale = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight);
         const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
         const x = (210 - dw) / 2, y = margin + capH;
         pdf.setFontSize(9); pdf.setTextColor(90);
-        pdf.text(cap, 105, margin + 4, { align: "center" });
+        if (!full) pdf.text(cap, 105, margin + 4, { align: "center" });
         const fmt = att.dataURL.startsWith("data:image/png") ? "PNG" : "JPEG";
         pdf.addImage(att.dataURL, fmt, x, y, dw, dh);
       }
