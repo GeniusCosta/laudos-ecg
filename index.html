@@ -266,7 +266,7 @@ body.modo-ped .adult-only{display:none;}
 <div class="topbar">
   <span class="inst-badge">ENCOR</span>
   <h1>Eletrocardiograma</h1>
-  <span class="tag">v.eedbf1a2</span>
+  <span class="tag">v.e335b160</span>
   <span class="modo-toggle" title="Modo do exame">
     <button id="btnAdulto" class="modo-btn active" onclick="setModo(false)">Adulto</button>
     <button id="btnPed" class="modo-btn" onclick="setModo(true)">Pediátrico</button>
@@ -1401,8 +1401,31 @@ async function pdfToImages(file) {
   }
   return out;
 }
+// Nome do arquivo = nome do paciente (ex.: "MARIA JOÃO DE SOUZA.jpg", "GENIUS COSTA-3.pdf")
+function nomeDoArquivo(fileName) {
+  const n = String(fileName || "")
+    .replace(/\.[^.]+$/, "")                                       // extensão
+    .replace(/[_]+/g, " ")
+    .replace(/\s*(\d{4}-\d{2}-\d{2}|\d{2}[-.]\d{2}[-.]\d{4})\s*$/, "") // data no fim
+    .replace(/\s*(\(\d+\)|-\s*\d+)\s*$/, "")                       // (1), -3
+    .replace(/\s*(\d{4}-\d{2}-\d{2}|\d{2}[-.]\d{2}[-.]\d{4})\s*$/, "") // data antes do (1)
+    .replace(/\s+/g, " ").trim();
+  // só aceita algo que pareça nome de pessoa: letras/espaços, 2+ palavras (ignora IMG_2026..., WhatsApp Image...)
+  if (!/^[A-Za-zÀ-ÿ'. ]+$/.test(n) || n.split(" ").length < 2 || /^(whatsapp|img|image|imagem|scan|ecg|laudo)\b/i.test(n)) return "";
+  return n;
+}
+function preencherNomePeloArquivo(fileName) {
+  const novo = nomeDoArquivo(fileName);
+  if (!novo) return;
+  const atual = (document.getElementById("nome").value || "").trim();
+  if (atual.toLowerCase() === novo.toLowerCase()) return;
+  if (atual && !confirm(`Substituir o nome do paciente?\n\nAtual: ${atual}\nDo arquivo: ${novo}`)) return;
+  pickNomeAC(novo);
+  flash(`✓ Nome do paciente preenchido pelo arquivo: ${novo}`);
+}
 async function handleEcgUpload(ev) {
   const files = [...(ev.target.files || [])];
+  if (files.length) preencherNomePeloArquivo(files[0].name);
   for (const f of files) {
     try {
       if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
