@@ -1,5 +1,5 @@
 /* Service Worker — Sistema de Laudos ECG ENCOR (offline PWA) */
-const CACHE = "ecg-encor-v4";
+const CACHE = "ecg-encor-v5";
 const PRECACHE = [
   "./",
   "./index.html",

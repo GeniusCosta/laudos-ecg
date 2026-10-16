@@ -2,14 +2,14 @@
 
 Gerador de laudos de eletrocardiograma (adulto e pediátrico) em página única, com pré-visualização A4 timbrada, assinatura, geração de PDF e funcionamento offline como aplicativo instalável (PWA).
 
-**Versão atual:** `v.ed0ab99b`
+**Versão atual:** `v.eedbf1a2`
 **Tema:** dark, alinhado ao editor de Ecocardiograma ENCOR.
 
 ---
 
 ## Novidades desta versão
 
-- **Anexo do ECG visível no preview:** ao anexar o traçado (imagem ou PDF), cada página aparece logo abaixo da folha do laudo, no mesmo formato em que entra no PDF. O botão **Imprimir** também imprime essas páginas (uma folha A4 por anexo, após o laudo). Anexo em PDF (folha do aparelho, já com cabeçalho ENCOR) entra em página inteira, sem legenda extra; foto/imagem mantém a legenda "ECG — paciente — data".
+- **Anexo do ECG visível no preview:** ao anexar o traçado (imagem ou PDF), cada página aparece logo abaixo da folha do laudo, no mesmo formato em que entra no PDF. O botão **Imprimir** também imprime essas páginas (uma folha A4 por anexo, após o laudo). Os anexos entram sem legenda (o arquivo original já traz identificação e data); anexo em PDF entra em página inteira e foto/imagem é centralizada na folha.
 - **Médico responsável selecionável:** seletor na barra superior (Dr. Genius Costa · Dr. Diego Rafael). A assinatura, nome, CRM e RQE do laudo acompanham o médico escolhido no preview, no PDF, no PDF p/ VIDaaS e na impressão. A escolha fica salva no navegador.
 - **Dropdown de ritmo simplificado:** Sinusal · Atrial · Juncional · Ventricular.
 - **Motor de conclusão automático:** deriva as linhas da conclusão a partir do ritmo e das medidas (FC, iPR, QRS, eixo, morfologia de V1), reconciliando a cada alteração e preservando o texto manual.
@@ -108,7 +108,7 @@ Substituição da versão anterior: faça upload dos arquivos novos sobrescreven
 A cada nova versão, **incremente o número do cache** em `sw.js` (linha 2):
 
 ```js
-const CACHE = "ecg-encor-v4";  // -> "ecg-encor-v5" na próxima publicação
+const CACHE = "ecg-encor-v5";  // -> "ecg-encor-v6" na próxima publicação
 ```
 
 Sem isso, o service worker pode continuar servindo a versão antiga em cache.
