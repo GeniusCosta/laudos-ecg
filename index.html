@@ -266,7 +266,7 @@ body.modo-ped .adult-only{display:none;}
 <div class="topbar">
   <span class="inst-badge">ENCOR</span>
   <h1>Eletrocardiograma</h1>
-  <span class="tag">v.e335b160</span>
+  <span class="tag">v.209939ff</span>
   <span class="modo-toggle" title="Modo do exame">
     <button id="btnAdulto" class="modo-btn active" onclick="setModo(false)">Adulto</button>
     <button id="btnPed" class="modo-btn" onclick="setModo(true)">Pediátrico</button>
@@ -1426,6 +1426,7 @@ function preencherNomePeloArquivo(fileName) {
 async function handleEcgUpload(ev) {
   const files = [...(ev.target.files || [])];
   if (files.length) preencherNomePeloArquivo(files[0].name);
+  const inicio = ecgAttachments.length;
   for (const f of files) {
     try {
       if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)) {
@@ -1442,6 +1443,7 @@ async function handleEcgUpload(ev) {
   ev.target.value = "";
   renderEcgThumbs();
   if (ecgAttachments.length) flash(`📎 ${ecgAttachments.length} anexo(s) — entrarão no PDF do laudo.`);
+  await aplicarMedidasDoEcg(ecgAttachments.slice(inicio));
 }
 function renderEcgThumbs() {
   const box = document.getElementById("ecgThumbs");
@@ -1465,6 +1467,182 @@ function updateEcgCaptions() {
   const cap = ecgCaption();
   document.querySelectorAll("#ecgPages .ecg-page-cap").forEach(el => { el.textContent = cap; });
 }
+/* ====== MEDIDAS AUTOMÁTICAS DO ARQUIVO DO ECG (Micromed: 4×3 + DII longo) ======
+   FC: lida do cabeçalho impresso ("FC: 56 bpm"); se não der, calculada pelos intervalos R-R do DII longo.
+   Eixo: amplitude líquida do QRS (R − Q − S) em D1 e aVF medida no traçado → calcEixo() (mesmo motor do botão "→ Eixo").
+   Supõe 25 mm/s e 10 mm/mV (padrão impresso pelo Micromed). Retorna { ok:false } se o layout não for reconhecido. */
+function analisarEcgImagem(img) {
+  const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const g = cv.getContext("2d", { willReadFrequently: true }); g.drawImage(img, 0, 0);
+  if (Math.abs(H / W - 297 / 210) > 0.03 || W < 600) return { ok: false, motivo: "não é uma página A4 do ECG" };
+  const d = g.getImageData(0, 0, W, H).data;
+  const isPink = i => d[i] > 180 && d[i] - d[i + 1] > 12;
+  const isInk = i => d[i + 1] < 120 && (d[i] + d[i + 1] + d[i + 2]) < 390;
+  const median = a => { const s = a.filter(v => !isNaN(v)).sort((x, y) => x - y); return s.length ? s[s.length >> 1] : NaN; };
+  const runs = (arr, thr, minLen) => { const out = []; let s = -1; for (let i = 0; i <= arr.length; i++) { const on = i < arr.length && arr[i] > thr; if (on && s < 0) s = i; if (!on && s >= 0) { if (i - s >= minLen) out.push([s, i - 1]); s = -1; } } return out; };
+
+  // 1) Layout: 5 faixas de grade; faixas 1–4 com 3 painéis iguais (confirmados pela fresta branca), faixa 5 = DII longo
+  const rowPink = new Float32Array(H);
+  for (let y = 0; y < H; y++) { let n = 0; for (let x = 0; x < W; x++) if (isPink((y * W + x) * 4)) n++; rowPink[y] = n / W; }
+  // área da grade = maior bloco de linhas rosadas (tolera frestas finas); 5 faixas de mesma altura, cada corte confirmado por um vale
+  const blk = runs(rowPink.map((v, y) => Math.max(...rowPink.slice(Math.max(0, y - 4), y + 5))), 0.10, Math.round(H * 0.2));
+  if (!blk.length) return { ok: false, motivo: "layout não reconhecido" };
+  const [G0, G1] = blk.reduce((a, b) => (b[1] - b[0] > a[1] - a[0] ? b : a));
+  const medRow = median(Array.from(rowPink.slice(G0, G1 + 1))), cutsY = [G0 - 1];
+  for (let k = 1; k < 5; k++) { const c = Math.round(G0 + (G1 - G0) * k / 5), w = Math.max(4, Math.round(H * 0.008)); let mi = 9, my = c; for (let y = c - w; y <= c + w; y++) if (rowPink[y] < mi) { mi = rowPink[y]; my = y; } if (mi > 0.6 * medRow) return { ok: false, motivo: "layout não reconhecido" }; cutsY.push(my); }
+  cutsY.push(G1 + 1);
+  const bands = []; for (let k = 0; k < 5; k++) bands.push([cutsY[k] + 1, cutsY[k + 1] - 1]);
+  const panelsOf = ([y0, y1], nExp) => {
+    const col = new Float32Array(W);
+    for (let x = 0; x < W; x++) { let n = 0; for (let y = y0; y <= y1; y++) if (isPink((y * W + x) * 4)) n++; col[x] = n / (y1 - y0 + 1); }
+    let L = 0, R = W - 1; while (L < W && col[L] < 0.85) L++; while (R > 0 && col[R] < 0.85) R--;
+    const medCol = median(Array.from(col.slice(L, R + 1)));
+    if (R - L < W * 0.5) return [];
+    const m = Math.round((R - L) / 190), cuts = [L];
+    for (let k = 1; k < nExp; k++) { const c = L + (R - L) * k / nExp; let mi = 1, mx = c; for (let x = Math.round(c - 8); x <= Math.round(c + 8); x++) if (col[x] < mi) { mi = col[x]; mx = x; } if (mi > 0.6 * medCol) return []; cuts.push(mx); }
+    cuts.push(R);
+    const out = []; for (let k = 0; k < nExp; k++) out.push({ x0: cuts[k] + m, x1: cuts[k + 1] - m, y0: y0 + m, y1: y1 - m });
+    return out;
+  };
+  const rows = bands.slice(0, 5).map((b, k) => panelsOf(b, k < 4 ? 3 : 1));
+  if (rows.map(r => r.length).join(",") !== "3,3,3,3,1") return { ok: false, motivo: "layout não reconhecido" };
+  const P = { DI: rows[0][0], DIII: rows[0][2], aVR: rows[1][0], aVF: rows[1][2], V1: rows[2][0], V3: rows[2][2], V4: rows[3][0], V6: rows[3][2], ritmo: rows[4][0] };
+
+  // 2) Calibração: a exportação do Micromed é uma página A4 com grade em mm reais → px/mm = largura ÷ 210
+  const pxmm = W / 210, pxs = pxmm * 25;
+
+  // 3) Traço de cada painel: por coluna, menor/maior y de tinta (ignora o rótulo da derivação)
+  const trace = p => {
+    const lo = [], hi = [], mid = [];
+    const labX = p.x0 + Math.round(10 * pxmm), labY = p.y0 + Math.round(5 * pxmm);
+    for (let x = p.x0 + 2; x <= p.x1 - 2; x++) {
+      let a = -1, b = -1;
+      for (let y = p.y0 + 2; y <= p.y1 - 2; y++) { if (x < labX && y < labY) continue; if (isInk((y * W + x) * 4)) { if (a < 0) a = y; b = y; } }
+      lo.push(a < 0 ? NaN : a); hi.push(b < 0 ? NaN : b); mid.push(a < 0 ? NaN : (a + b) / 2);
+    }
+    for (const arr of [lo, hi, mid]) { let last = -1; for (let i = 0; i < arr.length; i++) if (!isNaN(arr[i])) { if (last >= 0 && i - last > 1) for (let k = last + 1; k < i; k++) arr[k] = arr[last] + (arr[i] - arr[last]) * (k - last) / (i - last); last = i; } }
+    return { lo, hi, mid };
+  };
+  const T = {}; for (const k in P) T[k] = trace(P[k]);
+
+  // 4) QRS: colunas com excursão vertical rápida, somando as derivações simultâneas da mesma coluna
+  const detect = ts => {
+    const n = Math.min(...ts.map(t => t.mid.length)), sp = new Float32Array(n);
+    for (const t of ts) for (let i = 0; i < n; i++) { const s = t.hi[i] - t.lo[i]; if (!isNaN(s)) sp[i] += s; }
+    const groups = [];
+    for (let i = 0; i < n; i++) if (sp[i] >= 2 * pxmm) { const gr = groups[groups.length - 1]; if (gr && i - gr.b <= 0.08 * pxs) { gr.b = i; gr.mx = Math.max(gr.mx, sp[i]); } else groups.push({ a: i, b: i, mx: sp[i] }); }
+    const top = Math.max(0, ...groups.map(s => s.mx)), res = [];
+    for (const s of groups.filter(s => s.mx >= 0.4 * top && s.b - s.a <= 0.2 * pxs)) {
+      const last = res[res.length - 1];
+      if (last && s.a - last.b < 0.25 * pxs) { if (s.mx > last.mx) res[res.length - 1] = s; } else res.push(s);
+    }
+    return res;
+  };
+  // amplitude líquida (R − Q − S) em mm, média dos batimentos; linha de base = segmento PR
+  const netAmp = (t, groups) => {
+    const vals = [];
+    for (const { a, b } of groups) {
+      const base = median(t.mid.slice(Math.max(0, Math.round(a - 0.10 * pxs)), Math.max(0, Math.round(a - 0.04 * pxs)) + 1));
+      if (isNaN(base)) continue;
+      const w0 = Math.max(0, Math.round(a - 0.04 * pxs)), w1 = Math.min(t.mid.length - 1, Math.round(b + 0.04 * pxs));
+      let rI = -1, rV = 0; for (let i = w0; i <= w1; i++) { const up = base - t.lo[i]; if (up > rV) { rV = up; rI = i; } }
+      let q = 0, s = 0; for (let i = w0; i <= w1; i++) { const dn = t.hi[i] - base; if (rI < 0 || i <= rI) q = Math.max(q, dn); else s = Math.max(s, dn); }
+      vals.push((rV - q - s) / pxmm);
+    }
+    return vals.length ? vals.reduce((x, y) => x + y, 0) / vals.length : NaN;
+  };
+  const d1 = netAmp(T.DI, detect([T.DI, T.aVR, T.V1, T.V4]));
+  const avf = netAmp(T.aVF, detect([T.aVF, T.DIII, T.V3, T.V6]));
+
+  // 5) FC: R-R do DII longo (referência) e número impresso no cabeçalho (preferido)
+  const qR = detect([T.ritmo]);
+  const rPos = qR.map(({ a, b }) => { let k = a; for (let i = a; i <= b; i++) if (T.ritmo.lo[i] < T.ritmo.lo[k]) k = i; return k; });
+  const rr = []; for (let i = 1; i < rPos.length; i++) rr.push((rPos[i] - rPos[i - 1]) / pxs);
+  const fcRR = rr.length >= 2 ? Math.round(60 / (rr.reduce((x, y) => x + y, 0) / rr.length)) : NaN;
+  let fc = NaN, fcFonte = "";
+  try {
+    const linhas = ecgLerLinhasCabecalho(d, W, Math.min(H, G0 + 4));
+    const ult = linhas[linhas.length - 1];
+    const w = ult && ult.words[1];
+    if (w) {
+      // dígitos iniciais confiáveis da palavra (tolera o número encostado em "bpm")
+      let txt = "", score = 1;
+      for (const gl of w) { const r1 = ecgReconhecerNumero(d, W, [gl]); if (r1.score < 0.5) break; txt += r1.txt; score = Math.min(score, r1.score); }
+      const r = { txt, score }, v = txt.length >= 2 && txt.length <= 3 ? parseInt(txt, 10) : NaN;
+      if (r.score >= 0.5 && v >= 20 && v <= 250 && (isNaN(fcRR) || Math.abs(v - fcRR) <= 0.25 * fcRR)) { fc = v; fcFonte = "cabeçalho"; }
+    }
+  } catch (e) { console.warn("Leitura do cabeçalho falhou:", e); }
+  if (isNaN(fc) && !isNaN(fcRR)) { fc = fcRR; fcFonte = "intervalos R-R"; }
+
+  return { ok: true, fc, fcFonte, fcRR, d1, avf };
+}
+
+/* Leitura de números do cabeçalho por comparação de formas (sem OCR externo). */
+function ecgLerLinhasCabecalho(d, W, gridTop) {
+  const ink = (x, y) => { const i = (y * W + x) * 4; return (d[i] + d[i + 1] + d[i + 2]) < 330 && Math.abs(d[i] - d[i + 1]) < 60; };
+  const x0 = Math.round(W * 0.35), rowsInk = [];
+  for (let y = 0; y < gridTop; y++) { let n = 0; for (let x = x0; x < W; x++) if (ink(x, y)) n++; rowsInk.push(n); }
+  const lines = []; let s = -1;
+  rowsInk.forEach((n, i) => { if (n && s < 0) s = i; if (!n && s >= 0) { lines.push([s, i - 1]); s = -1; } });
+  if (s >= 0) lines.push([s, rowsInk.length - 1]);
+  return lines.map(([y0, y1]) => {
+    const colInk = x => { for (let y = y0; y <= y1; y++) if (ink(x, y)) return true; return false; };
+    const glyphs = []; let a = -1;
+    for (let x = x0; x <= W; x++) { const on = x < W && colInk(x); if (on && a < 0) a = x; if (!on && a >= 0) { glyphs.push([a, x - 1]); a = -1; } }
+    const h = y1 - y0 + 1, words = [];
+    for (const gl of glyphs) { const w = words[words.length - 1]; if (w && gl[0] - w[w.length - 1][1] <= Math.max(3, h * 0.35)) w.push(gl); else words.push([gl]); }
+    return { y0, y1, words: words.map(w => w.map(([gx0, gx1]) => { let gy0 = y1, gy1 = y0; for (let x = gx0; x <= gx1; x++) for (let y = y0; y <= y1; y++) if (ink(x, y)) { if (y < gy0) gy0 = y; if (y > gy1) gy1 = y; } return { x0: gx0, x1: gx1, y0: gy0, y1: gy1 }; })) };
+  });
+}
+const _ecgDigitTpl = {};
+function ecgReconhecerNumero(d, W, glyphs) {
+  const S = 16, HS = 24;
+  const rast = (get, w, h) => { const v = new Float32Array(S * HS); for (let j = 0; j < HS; j++) for (let i = 0; i < S; i++) { let acc = 0, n = 0; const ya = Math.floor(j * h / HS), yb = Math.max(ya + 1, Math.floor((j + 1) * h / HS)), xa = Math.floor(i * w / S), xb = Math.max(xa + 1, Math.floor((i + 1) * w / S)); for (let y = ya; y < yb; y++) for (let x = xa; x < xb; x++) { acc += get(x, y); n++; } v[j * S + i] = acc / n; } return v; };
+  const corr = (a, b) => { let ma = 0, mb = 0; for (let i = 0; i < a.length; i++) { ma += a[i]; mb += b[i]; } ma /= a.length; mb /= b.length; let s = 0, sa = 0, sb = 0; for (let i = 0; i < a.length; i++) { const x = a[i] - ma, y = b[i] - mb; s += x * y; sa += x * x; sb += y * y; } return s / Math.sqrt(sa * sb || 1); };
+  if (!_ecgDigitTpl.v) {
+    _ecgDigitTpl.v = [];
+    for (const font of ["Arial", "Helvetica", "Liberation Sans"]) for (const wt of ["normal", "bold"]) for (let k = 0; k <= 9; k++) {
+      const c = document.createElement("canvas"); c.width = 80; c.height = 100; const g = c.getContext("2d", { willReadFrequently: true });
+      g.fillStyle = "#fff"; g.fillRect(0, 0, 80, 100); g.fillStyle = "#000"; g.font = `${wt} 72px ${font}`; g.fillText(String(k), 10, 85);
+      const p = g.getImageData(0, 0, 80, 100).data; let bx0 = 80, bx1 = 0, by0 = 100, by1 = 0;
+      for (let y = 0; y < 100; y++) for (let x = 0; x < 80; x++) if (p[(y * 80 + x) * 4] < 128) { bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x); by0 = Math.min(by0, y); by1 = Math.max(by1, y); }
+      const w = bx1 - bx0 + 1, h = by1 - by0 + 1;
+      _ecgDigitTpl.v.push({ k, ar: w / h, v: rast((x, y) => 1 - p[((by0 + y) * 80 + bx0 + x) * 4] / 255, w, h) });
+    }
+  }
+  let txt = "", score = 1;
+  for (const gl of glyphs) {
+    const w = gl.x1 - gl.x0 + 1, h = gl.y1 - gl.y0 + 1;
+    const v = rast((x, y) => { const i = ((gl.y0 + y) * W + gl.x0 + x) * 4; return 1 - (d[i] + d[i + 1] + d[i + 2]) / 765; }, w, h);
+    let best = -9, bk = -1;
+    for (const t of _ecgDigitTpl.v) { const sc = corr(v, t.v) - Math.abs(Math.log((w / h) / t.ar)) * 0.5; if (sc > best) { best = sc; bk = t.k; } }
+    txt += bk; score = Math.min(score, best);
+  }
+  return { txt, score };
+}
+
+// Aplica FC e eixo (D1/aVF → calcEixo) a partir do primeiro anexo reconhecido
+async function aplicarMedidasDoEcg(anexos) {
+  let r = null;
+  for (const a of anexos) { try { const res = analisarEcgImagem(await loadImg(a.dataURL)); if (res.ok) { r = res; break; } } catch (e) { console.warn(e); } }
+  if (!r) return;
+  const fcEl = document.getElementById("fc"), d1El = document.getElementById("d1"), avfEl = document.getElementById("avf");
+  const temFc = !isNaN(r.fc), temEixo = !isNaN(r.d1) && !isNaN(r.avf);
+  if (!temFc && !temEixo) return;
+  const preenchidos = [fcEl, d1El, avfEl, document.getElementById("eixo")].some(el => (el.value || "").trim() !== "");
+  if (preenchidos && !confirm("Substituir FC e eixo pelos valores medidos no arquivo do ECG?")) return;
+  const partes = [];
+  if (temFc) { fcEl.value = r.fc; partes.push(`FC ${r.fc} bpm (${r.fcFonte})`); }
+  if (temEixo) {
+    d1El.value = r.d1.toFixed(1); avfEl.value = r.avf.toFixed(1);
+    calcEixo();
+    partes.push(`D1 ${r.d1.toFixed(1)} mm · aVF ${r.avf.toFixed(1)} mm → eixo ${document.getElementById("eixo").value}°`);
+  }
+  render(); saveDraft();
+  flash(`📈 Do arquivo do ECG: ${partes.join(" · ")}. Confira antes de emitir.`);
+}
+
 function removeEcgAttachment(i) { ecgAttachments.splice(i, 1); renderEcgThumbs(); }
 
 /* ====== PWA: registro do service worker (apenas via http/https) ====== */

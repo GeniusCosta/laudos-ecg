@@ -2,13 +2,14 @@
 
 Gerador de laudos de eletrocardiograma (adulto e pediátrico) em página única, com pré-visualização A4 timbrada, assinatura, geração de PDF e funcionamento offline como aplicativo instalável (PWA).
 
-**Versão atual:** `v.e335b160`
+**Versão atual:** `v.209939ff`
 **Tema:** dark, alinhado ao editor de Ecocardiograma ENCOR.
 
 ---
 
 ## Novidades desta versão
 
+- **Medidas automáticas do arquivo do ECG (Micromed, JPEG ou PDF):** ao anexar, a **FC** é lida do cabeçalho impresso ("FC: 56 bpm"; se não der, calculada pelos intervalos R-R do DII longo) e o **eixo** é calculado pela amplitude líquida do QRS (R − Q − S) medida em **D1 e aVF**, pelo mesmo motor do botão "→ Eixo". O **iPR não é preenchido**: a onda P desses traçados é baixa demais para a resolução da imagem. Supõe 25 mm/s e 10 mm/mV. Se os campos já estiverem preenchidos, o sistema pergunta antes de substituir.
 - **Nome do paciente pelo arquivo:** ao anexar o ECG (JPEG ou PDF), o nome do arquivo preenche o **Nome completo** (ex.: `MARIA JOÃO DE SOUZA.jpg`). Sufixos de cópia/data (`-3`, `(1)`, `2026-05-25`) são ignorados; nomes genéricos (`IMG_…`, `WhatsApp Image…`) não alteram o campo; se já houver outro nome, o sistema pergunta antes de substituir.
 - **Anexo do ECG visível no preview:** ao anexar o traçado (imagem ou PDF), cada página aparece logo abaixo da folha do laudo, no mesmo formato em que entra no PDF. O botão **Imprimir** também imprime essas páginas (uma folha A4 por anexo, após o laudo). Os anexos entram sem legenda (o arquivo original já traz identificação e data); anexo em PDF entra em página inteira e foto/imagem é centralizada na folha.
 - **Médico responsável selecionável:** seletor na barra superior (Dr. Genius Costa · Dr. Diego Rafael). A assinatura, nome, CRM e RQE do laudo acompanham o médico escolhido no preview, no PDF, no PDF p/ VIDaaS e na impressão. A escolha fica salva no navegador.
@@ -109,7 +110,7 @@ Substituição da versão anterior: faça upload dos arquivos novos sobrescreven
 A cada nova versão, **incremente o número do cache** em `sw.js` (linha 2):
 
 ```js
-const CACHE = "ecg-encor-v6";  // -> "ecg-encor-v7" na próxima publicação
+const CACHE = "ecg-encor-v7";  // -> "ecg-encor-v8" na próxima publicação
 ```
 
 Sem isso, o service worker pode continuar servindo a versão antiga em cache.
