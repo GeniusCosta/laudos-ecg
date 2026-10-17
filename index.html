@@ -266,7 +266,7 @@ body.modo-ped .adult-only{display:none;}
 <div class="topbar">
   <span class="inst-badge">ENCOR</span>
   <h1>Eletrocardiograma</h1>
-  <span class="tag">v.209939ff</span>
+  <span class="tag">v.74509dc8</span>
   <span class="modo-toggle" title="Modo do exame">
     <button id="btnAdulto" class="modo-btn active" onclick="setModo(false)">Adulto</button>
     <button id="btnPed" class="modo-btn" onclick="setModo(true)">Pediátrico</button>
@@ -1470,6 +1470,7 @@ function updateEcgCaptions() {
 /* ====== MEDIDAS AUTOMÁTICAS DO ARQUIVO DO ECG (Micromed: 4×3 + DII longo) ======
    FC: lida do cabeçalho impresso ("FC: 56 bpm"); se não der, calculada pelos intervalos R-R do DII longo.
    Eixo: amplitude líquida do QRS (R − Q − S) em D1 e aVF medida no traçado → calcEixo() (mesmo motor do botão "→ Eixo").
+   QT: do início global do QRS ao fim da T (método da tangente), mediana das derivações concordantes → calcQTc().
    Supõe 25 mm/s e 10 mm/mV (padrão impresso pelo Micromed). Retorna { ok:false } se o layout não for reconhecido. */
 function analisarEcgImagem(img) {
   const W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
@@ -1507,7 +1508,7 @@ function analisarEcgImagem(img) {
   };
   const rows = bands.slice(0, 5).map((b, k) => panelsOf(b, k < 4 ? 3 : 1));
   if (rows.map(r => r.length).join(",") !== "3,3,3,3,1") return { ok: false, motivo: "layout não reconhecido" };
-  const P = { DI: rows[0][0], DIII: rows[0][2], aVR: rows[1][0], aVF: rows[1][2], V1: rows[2][0], V3: rows[2][2], V4: rows[3][0], V6: rows[3][2], ritmo: rows[4][0] };
+  const P = { DI: rows[0][0], DII: rows[0][1], DIII: rows[0][2], aVR: rows[1][0], aVL: rows[1][1], aVF: rows[1][2], V1: rows[2][0], V2: rows[2][1], V3: rows[2][2], V4: rows[3][0], V5: rows[3][1], V6: rows[3][2], ritmo: rows[4][0] };
 
   // 2) Calibração: a exportação do Micromed é uma página A4 com grade em mm reais → px/mm = largura ÷ 210
   const pxmm = W / 210, pxs = pxmm * 25;
@@ -1575,7 +1576,49 @@ function analisarEcgImagem(img) {
   } catch (e) { console.warn("Leitura do cabeçalho falhou:", e); }
   if (isNaN(fc) && !isNaN(fcRR)) { fc = fcRR; fcFonte = "intervalos R-R"; }
 
-  return { ok: true, fc, fcFonte, fcRR, d1, avf };
+  // 6) QT: batimento médio de cada derivação (alinhado no QRS) → início global do QRS (12 derivações) e fim da T pela tangente
+  let qt = NaN; const qtDeriv = {}; let qOnMs = NaN;
+  try {
+    const rrS = rr.length ? rr.reduce((x, y) => x + y, 0) / rr.length : 1;
+    const L = Math.round(0.20 * pxs), Rt = Math.round(Math.min(0.70, 0.85 * rrS) * pxs), N = L + Rt + 1;
+    const medios = {};
+    for (const col of [["DI", "aVR", "V1", "V4"], ["DII", "aVL", "V2", "V5"], ["DIII", "aVF", "V3", "V6"], ["ritmo"]]) {
+      const ts = col.map(k => T[k]), grupos = detect(ts);
+      const centros = grupos.map(({ a, b }) => { let k = a, v = -1; for (let i = a; i <= b; i++) { let s = 0; for (const t of ts) { const dv = t.mid[i + 1] - t.mid[i - 1]; if (!isNaN(dv)) s += Math.abs(dv); } if (s > v) { v = s; k = i; } } return k; });
+      col.forEach((k, j) => {
+        const t = ts[j], acc = new Float64Array(N), n = new Float64Array(N);
+        for (const c of centros) for (let o = -L; o <= Rt; o++) { const v = t.mid[c + o]; if (c + o >= 0 && !isNaN(v)) { acc[o + L] += v; n[o + L]++; } }
+        const avg = Array.from(acc, (v, i) => n[i] ? v / n[i] : NaN);
+        const base = median(avg.slice(L - Math.round(0.11 * pxs), L - Math.round(0.075 * pxs) + 1));
+        medios[k] = avg.map(v => (base - v) / pxmm); // mm, positivo = para cima
+      });
+    }
+    // início global do QRS
+    const doze = ["DI", "DII", "DIII", "aVR", "aVL", "aVF", "V1", "V2", "V3", "V4", "V5", "V6"];
+    const M = Array.from({ length: N }, (_, i) => Math.sqrt(doze.reduce((s, k) => s + (isNaN(medios[k][i]) ? 0 : medios[k][i] ** 2), 0)));
+    const ruido = Math.max(...M.slice(L - Math.round(0.11 * pxs), L - Math.round(0.075 * pxs) + 1));
+    let on = L; while (on > L - Math.round(0.12 * pxs) && M[on] >= Math.max(2 * ruido, 0.6)) on--;
+    qOnMs = (on - L) / pxs * 1000;
+    // fim da T em cada derivação: tangente de maior inclinação do ramo descendente × linha de base
+    for (const k of ["ritmo", "DII", "DI", "V2", "V3", "V4", "V5", "V6", "aVF", "DIII", "aVL", "aVR", "V1"]) {
+      const v = medios[k]; let pk = -1, amp = 0;
+      for (let i = L + Math.round(0.12 * pxs); i < N - 2; i++) if (!isNaN(v[i]) && Math.abs(v[i]) > Math.abs(amp)) { amp = v[i]; pk = i; }
+      if (pk < 0 || Math.abs(amp) < 1.0) continue;                                // T baixa demais para a tangente
+      const sg = Math.sign(amp); let m = -1, sl = 0;
+      for (let i = pk + 1; i < Math.min(N - 2, pk + Math.round(0.25 * pxs)); i++) { const s = (v[i + 2] - v[i - 2]) / 4; if (!isNaN(s) && -sg * s > sl) { sl = -sg * s; m = i; } }
+      if (m < 0 || sl <= 0) continue;
+      const fim = m + Math.abs(v[m]) / sl;                                        // cruzamento com a linha de base
+      if (fim <= pk || fim > pk + 0.30 * pxs || fim >= N) continue;
+      qtDeriv[k] = Math.round((fim - on) / pxs * 1000);
+    }
+    const vals = Object.values(qtDeriv).sort((a, b) => a - b);
+    if (vals.length >= 3) {
+      const q1 = vals[Math.floor(vals.length * 0.25)], q3 = vals[Math.floor(vals.length * 0.75)];
+      if (q3 - q1 <= 40) qt = vals[vals.length >> 1];                              // derivações concordantes → mediana
+    }
+  } catch (e) { console.warn("QT automático falhou:", e); }
+
+  return { ok: true, fc, fcFonte, fcRR, d1, avf, qt, qtDeriv, qOnMs };
 }
 
 /* Leitura de números do cabeçalho por comparação de formas (sem OCR externo). */
@@ -1622,16 +1665,17 @@ function ecgReconhecerNumero(d, W, glyphs) {
   return { txt, score };
 }
 
-// Aplica FC e eixo (D1/aVF → calcEixo) a partir do primeiro anexo reconhecido
+// Aplica FC, eixo (D1/aVF → calcEixo) e QT (→ calcQTc) a partir do primeiro anexo reconhecido
 async function aplicarMedidasDoEcg(anexos) {
   let r = null;
   for (const a of anexos) { try { const res = analisarEcgImagem(await loadImg(a.dataURL)); if (res.ok) { r = res; break; } } catch (e) { console.warn(e); } }
   if (!r) return;
   const fcEl = document.getElementById("fc"), d1El = document.getElementById("d1"), avfEl = document.getElementById("avf");
-  const temFc = !isNaN(r.fc), temEixo = !isNaN(r.d1) && !isNaN(r.avf);
-  if (!temFc && !temEixo) return;
-  const preenchidos = [fcEl, d1El, avfEl, document.getElementById("eixo")].some(el => (el.value || "").trim() !== "");
-  if (preenchidos && !confirm("Substituir FC e eixo pelos valores medidos no arquivo do ECG?")) return;
+  const qtEl = document.getElementById("qt");
+  const temFc = !isNaN(r.fc), temEixo = !isNaN(r.d1) && !isNaN(r.avf), temQt = !isNaN(r.qt);
+  if (!temFc && !temEixo && !temQt) return;
+  const preenchidos = [fcEl, d1El, avfEl, qtEl, document.getElementById("eixo")].some(el => (el.value || "").trim() !== "");
+  if (preenchidos && !confirm("Substituir FC, eixo e QT pelos valores medidos no arquivo do ECG?")) return;
   const partes = [];
   if (temFc) { fcEl.value = r.fc; partes.push(`FC ${r.fc} bpm (${r.fcFonte})`); }
   if (temEixo) {
@@ -1639,7 +1683,8 @@ async function aplicarMedidasDoEcg(anexos) {
     calcEixo();
     partes.push(`D1 ${r.d1.toFixed(1)} mm · aVF ${r.avf.toFixed(1)} mm → eixo ${document.getElementById("eixo").value}°`);
   }
-  render(); saveDraft();
+  if (temQt) { qtEl.value = r.qt; partes.push(`QT ${r.qt} ms`); }
+  render(); calcQTc(); saveDraft();
   flash(`📈 Do arquivo do ECG: ${partes.join(" · ")}. Confira antes de emitir.`);
 }
 
