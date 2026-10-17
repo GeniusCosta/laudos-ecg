@@ -266,7 +266,7 @@ body.modo-ped .adult-only{display:none;}
 <div class="topbar">
   <span class="inst-badge">ENCOR</span>
   <h1>Eletrocardiograma</h1>
-  <span class="tag">v.2a6880ee</span>
+  <span class="tag">v.4a24beae</span>
   <span class="modo-toggle" title="Modo do exame">
     <button id="btnAdulto" class="modo-btn active" onclick="setModo(false)">Adulto</button>
     <button id="btnPed" class="modo-btn" onclick="setModo(true)">Pediátrico</button>
@@ -900,7 +900,7 @@ function motorConclusao() {
 }
 
 /* ====== 2. DATA PT-BR ====== */
-function todayISO() { return new Date().toISOString().split("T")[0]; }
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; } // data local (toISOString é UTC e vira o dia após as 21h)
 function formatDatePtBr(iso) {
   if (!iso) return "";
   const d = new Date(iso + "T00:00:00");
@@ -2211,8 +2211,7 @@ function copyText() {
   const concl = (document.getElementById("conclusao").value || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean).join(" ");
   if (!concl) { flash("Conclusão vazia — nada a copiar.", true); return; }
   // formato: Eletrocardiograma (dd/mm/aaaa): conclusão
-  const hoje = new Date(), local = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`; // data local (não UTC)
-  const [a, m, d] = (document.getElementById("dataExame").value || local).split("-");
+  const [a, m, d] = (document.getElementById("dataExame").value || todayISO()).split("-");
   const txt = `Eletrocardiograma (${d}/${m}/${a}): ${concl}`;
   navigator.clipboard.writeText(txt).then(() => flash("✓ Copiado: " + txt));
 }

@@ -2,13 +2,14 @@
 
 Gerador de laudos de eletrocardiograma (adulto e pediátrico) em página única, com pré-visualização A4 timbrada, assinatura, geração de PDF e funcionamento offline como aplicativo instalável (PWA).
 
-**Versão atual:** `v.2a6880ee`
+**Versão atual:** `v.4a24beae`
 **Tema:** dark, alinhado ao editor de Ecocardiograma ENCOR.
 
 ---
 
 ## Novidades desta versão
 
+- **Data do exame correta à noite:** a data padrão (ao abrir e em "Novo") usava o horário UTC e virava o dia seguinte depois das 21h; agora usa a data local.
 - **📋 Copiar conclusão** agora copia no formato `Eletrocardiograma (dd/mm/aaaa): conclusão` (data do exame; várias linhas viram uma frase só).
 - **Medidas automáticas do arquivo do ECG (Micromed, JPEG ou PDF):** ao anexar, a **FC** é lida do cabeçalho impresso ("FC: 56 bpm"; se não der, calculada pelos intervalos R-R do DII longo) e o **eixo** é calculado pela amplitude líquida do QRS (R − Q − S) medida em **D1 e aVF**, pelo mesmo motor do botão "→ Eixo". O **QRS** é medido em cada coluna de derivações simultâneas (início pela magnitude, fim pela velocidade espacial — independe de supra/infra de ST) e usa a mediana das colunas, se concordarem. O **QT** vai do início do QRS (da própria coluna) ao fim da T pelo método da tangente, mediana das derivações concordantes (só é preenchido se elas concordarem); o QTc é recalculado pelo motor existente. O **iPR** é procurado na ordem **DII → DIII → aVF → V1 → DII longo**, usando a primeira derivação em que a onda P passa no controle de qualidade (amplitude ≥ 0,5 mm e ≥ 4× o ruído, pico 50–300 ms antes do QRS, duração 50–160 ms, início pela tangente, PR coerente entre os batimentos ±40 ms, faixa 80–400 ms). O DII longo também é trava: PR variável > 60 ms entre batimentos (Wenckebach, dissociação AV) → não preenche. Se nenhuma derivação for segura, o campo fica em branco para preenchimento manual. Supõe 25 mm/s e 10 mm/mV. Se os campos já estiverem preenchidos, o sistema pergunta antes de substituir.
 - **Nome do paciente pelo arquivo:** ao anexar o ECG (JPEG ou PDF), o nome do arquivo preenche o **Nome completo** (ex.: `MARIA JOÃO DE SOUZA.jpg`). Sufixos de cópia/data (`-3`, `(1)`, `2026-05-25`) são ignorados; nomes genéricos (`IMG_…`, `WhatsApp Image…`) não alteram o campo; se já houver outro nome, o sistema pergunta antes de substituir.
