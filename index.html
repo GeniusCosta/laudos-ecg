@@ -266,7 +266,7 @@ body.modo-ped .adult-only{display:none;}
 <div class="topbar">
   <span class="inst-badge">ENCOR</span>
   <h1>Eletrocardiograma</h1>
-  <span class="tag">v.aa16dc6b</span>
+  <span class="tag">v.2a6880ee</span>
   <span class="modo-toggle" title="Modo do exame">
     <button id="btnAdulto" class="modo-btn active" onclick="setModo(false)">Adulto</button>
     <button id="btnPed" class="modo-btn" onclick="setModo(true)">Pediátrico</button>
@@ -280,7 +280,7 @@ body.modo-ped .adult-only{display:none;}
   <button onclick="savePatient()" title="Salvar paciente (Ctrl+S)">Salvar</button>
   <button onclick="savePDF(false)" title="Gerar PDF (Ctrl+Shift+S)">PDF</button>
   <button onclick="printPDF()" title="Imprimir (Ctrl+P)">Imprimir</button>
-  <button onclick="copyText()" title="Copiar somente a conclusão para a área de transferência">📋 Copiar conclusão</button>
+  <button onclick="copyText()" title="Copiar no formato Eletrocardiograma (dd/mm/aaaa): conclusão">📋 Copiar conclusão</button>
   <button onclick="resetForm()" title="Novo laudo (Ctrl+N)">Novo</button>
   <button id="btnTheme" onclick="toggleTheme()" title="Alternar tema claro/escuro">☀️</button>
   <button onclick="showHelp()" title="Atalhos e ajuda">Ajuda</button>
@@ -2208,9 +2208,13 @@ function printForVIDaaS() {
 }
 
 function copyText() {
-  const txt = (document.getElementById("conclusao").value || "").trim();
-  if (!txt) { flash("Conclusão vazia — nada a copiar.", true); return; }
-  navigator.clipboard.writeText(txt).then(() => flash("✓ Conclusão copiada."));
+  const concl = (document.getElementById("conclusao").value || "").split(/\r?\n/).map(l => l.trim()).filter(Boolean).join(" ");
+  if (!concl) { flash("Conclusão vazia — nada a copiar.", true); return; }
+  // formato: Eletrocardiograma (dd/mm/aaaa): conclusão
+  const hoje = new Date(), local = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}-${String(hoje.getDate()).padStart(2, "0")}`; // data local (não UTC)
+  const [a, m, d] = (document.getElementById("dataExame").value || local).split("-");
+  const txt = `Eletrocardiograma (${d}/${m}/${a}): ${concl}`;
+  navigator.clipboard.writeText(txt).then(() => flash("✓ Copiado: " + txt));
 }
 function downloadHTML() {
   const nome = (document.getElementById("nome").value || "paciente").replace(/\s+/g, "_");
