@@ -2,13 +2,14 @@
 
 Gerador de laudos de eletrocardiograma (adulto e pediátrico) em página única, com pré-visualização A4 timbrada, assinatura, geração de PDF e funcionamento offline como aplicativo instalável (PWA).
 
-**Versão atual:** `v.4841ccf4`
+**Versão atual:** `v.699a3221`
 **Tema:** dark, alinhado ao editor de Ecocardiograma ENCOR.
 
 ---
 
 ## Novidades desta versão
 
+- **Medidas automáticas em exames de alta resolução (300 dpi, 2480×3508):** a leitura passou a se ajustar à resolução da imagem (antes falhava e chegava a preencher QRS falso). iPR mais robusto com FC alta e com P estreita; trava de Wenckebach ignora um batimento isolado discrepante. Nomes de arquivo com extensão dupla (`.jpg.jpeg`) não levam mais a extensão para o nome do paciente.
 - **Aviso quando a leitura automática não é possível:** ao anexar um arquivo que não é reconhecido como ECG do Micromed, o sistema mostra o motivo e o tamanho da imagem (ajuda a diagnosticar exportações diferentes).
 - **Data do exame correta à noite:** a data padrão (ao abrir e em "Novo") usava o horário UTC e virava o dia seguinte depois das 21h; agora usa a data local.
 - **📋 Copiar conclusão** agora copia no formato `Eletrocardiograma (dd/mm/aaaa): conclusão` (data do exame; várias linhas viram uma frase só).
@@ -113,7 +114,7 @@ Substituição da versão anterior: faça upload dos arquivos novos sobrescreven
 A cada nova versão, **incremente o número do cache** em `sw.js` (linha 2):
 
 ```js
-const CACHE = "ecg-encor-v12";  // -> "ecg-encor-v13" na próxima publicação
+const CACHE = "ecg-encor-v13";  // -> "ecg-encor-v14" na próxima publicação
 ```
 
 Sem isso, o service worker pode continuar servindo a versão antiga em cache.
