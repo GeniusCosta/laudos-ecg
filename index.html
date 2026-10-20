@@ -266,7 +266,7 @@ body.modo-ped .adult-only{display:none;}
 <div class="topbar">
   <span class="inst-badge">ENCOR</span>
   <h1>Eletrocardiograma</h1>
-  <span class="tag">v.4a24beae</span>
+  <span class="tag">v.4841ccf4</span>
   <span class="modo-toggle" title="Modo do exame">
     <button id="btnAdulto" class="modo-btn active" onclick="setModo(false)">Adulto</button>
     <button id="btnPed" class="modo-btn" onclick="setModo(true)">Pediátrico</button>
@@ -1731,9 +1731,22 @@ function ecgReconhecerNumero(d, W, glyphs) {
 
 // Aplica FC, eixo (D1/aVF → calcEixo), iPR, QRS e QT (→ calcQTc) a partir do primeiro anexo reconhecido
 async function aplicarMedidasDoEcg(anexos) {
-  let r = null;
-  for (const a of anexos) { try { const res = analisarEcgImagem(await loadImg(a.dataURL)); if (res.ok) { r = res; break; } } catch (e) { console.warn(e); } }
-  if (!r) return;
+  let r = null; const falhas = [];
+  for (const a of anexos) {
+    try {
+      const img = await loadImg(a.dataURL), res = analisarEcgImagem(img);
+      if (res.ok) { r = res; break; }
+      falhas.push(`${res.motivo} (${img.naturalWidth}×${img.naturalHeight} px)`);
+    } catch (e) { console.warn(e); falhas.push("erro: " + e.message); }
+  }
+  // sem leitura automática: avisa o motivo (ajuda a diagnosticar exportações diferentes do Micromed)
+  if (!r) {
+    if (falhas.length) setTimeout(() => {
+      flash("📈 Medidas automáticas não aplicadas: " + falhas[0] + ". Preencha FC, eixo, iPR, QRS e QT manualmente.", true);
+      clearTimeout(flash._t); flash._t = setTimeout(() => document.getElementById("status").classList.remove("show"), 9000);
+    }, 1800);
+    return;
+  }
   const fcEl = document.getElementById("fc"), d1El = document.getElementById("d1"), avfEl = document.getElementById("avf");
   const qtEl = document.getElementById("qt"), qrsEl = document.getElementById("qrs"), iprEl = document.getElementById("ipr");
   const temFc = !isNaN(r.fc), temEixo = !isNaN(r.d1) && !isNaN(r.avf), temQt = !isNaN(r.qt), temQrs = !isNaN(r.qrs), temPr = !isNaN(r.pr);
