@@ -763,8 +763,58 @@ function initMedicoSelect() {
   sel.innerHTML = Object.entries(MEDICOS).map(([id, m]) => `<option value="${id}">${m.nome}</option>`).join("");
   sel.value = getMedicoId();
 }
-function getPatients() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); } catch { return []; } }
-function savePatients(list) { localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+/* v.banco-idb: o banco de laudos passou do localStorage para o IndexedDB.
+   O localStorage tem ~5 MB DIVIDIDOS com todos os programas publicados em geniuscosta.github.io
+   (ECG, eco, Doppler, fetal…); quando enchia, o salvamento falhava em silêncio. A lista continua
+   em memória (getPatients() síncrono, mais recente primeiro) e cada gravação vai para o IndexedDB.
+   Na primeira abertura os laudos antigos do localStorage são migrados e a chave antiga é apagada. */
+const PAT_DB = "ecg_pacientes", PAT_STORE = "p";
+let patCache = [], _patDb = null;
+function patDb() {
+  return _patDb || (_patDb = new Promise((res, rej) => {
+    const r = indexedDB.open(PAT_DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(PAT_STORE);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => { _patDb = null; rej(r.error); };
+  }));
+}
+function patTx(fn) {
+  return patDb().then(db => new Promise((res, rej) => {
+    const tx = db.transaction(PAT_STORE, "readwrite"); fn(tx.objectStore(PAT_STORE));
+    tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+  }));
+}
+const patOrdem = (a, b) => (b._savedAt || "").localeCompare(a._savedAt || "") || String(b._id || "").localeCompare(String(a._id || ""));
+const patReady = (async () => {
+  try {
+    let old = null; try { old = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null"); } catch { old = null; }
+    if (Array.isArray(old) && old.length) await patTx(st => old.forEach(p => { if (p && p._id) st.put(p, p._id); }));
+    if (old !== null) { try { localStorage.removeItem(STORAGE_KEY); } catch {} }
+    const db = await patDb();
+    const all = await new Promise((res, rej) => { const q = db.transaction(PAT_STORE, "readonly").objectStore(PAT_STORE).getAll(); q.onsuccess = () => res(q.result || []); q.onerror = () => rej(q.error); });
+    // mantém o que já tiver sido salvo nesta sessão antes do banco terminar de abrir
+    const ids = new Set(patCache.map(p => p._id));
+    patCache = patCache.concat(all.filter(p => !ids.has(p._id))).sort(patOrdem);
+  } catch (e) { console.error("[Banco]", e); setTimeout(() => flash("⚠ Não foi possível abrir o banco de laudos: " + (e.message || e.name || e), true), 500); }
+})();
+function patRecarrega() {
+  patDb().then(db => { const q = db.transaction(PAT_STORE, "readonly").objectStore(PAT_STORE).getAll(); q.onsuccess = () => { patCache = (q.result || []).sort(patOrdem); }; }).catch(() => {});
+}
+function getPatients() { return patCache; }
+// grava a lista: put dos presentes, delete dos removidos. Retorna Promise<boolean> (true = gravou)
+function savePatients(list) {
+  const antes = new Set(patCache.map(p => p._id)), agora = new Set(list.map(p => p._id));
+  patCache = list;
+  return patTx(st => {
+    list.forEach(p => { if (p && p._id) st.put(p, p._id); });
+    antes.forEach(id => { if (!agora.has(id)) st.delete(id); });
+  }).then(() => true).catch(e => {
+    console.error("[Banco]", e);
+    patRecarrega();   // a lista em memória volta a refletir só o que está gravado
+    flash("⚠ Não foi possível gravar no banco: " + (e.message || e.name || e) + " — exporte um backup.", true);
+    return false;
+  });
+}
 
 /* ====== MÓDULO PEDIÁTRICO — III Diretriz SBC (2016), Tabela 1 ====== */
 let modoPediatrico = false;
@@ -1816,7 +1866,7 @@ window.addEventListener("appinstalled", () => {
 function saveDraft() {
   const data = {};
   document.querySelectorAll("input, textarea, select").forEach(el => { if (el.id) data[el.id] = el.type === "checkbox" ? el.checked : el.value; });
-  localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify(data)); } catch (e) { return; }   // armazenamento cheio: ignora o rascunho
   document.getElementById("lastSaved").textContent = "💾 Salvo automaticamente";
 }
 function loadDraft() {
@@ -1846,8 +1896,7 @@ function savePatient() {
   entry._id = Date.now().toString(36) + Math.random().toString(36).substr(2, 4);
   loadedPatientId = entry._id;
   list.unshift(entry);
-  savePatients(list);
-  flash(`✓ Laudo de "${nome}" salvo (${list.length} no banco).`);
+  savePatients(list).then(ok => { if (ok) flash(`✓ Laudo de "${nome}" salvo (${list.length} no banco).`); });
 }
 function openPatients() { renderPatientList(); document.getElementById("patientsModal").classList.add("show"); }
 function closePatients() { document.getElementById("patientsModal").classList.remove("show"); }
@@ -1945,7 +1994,8 @@ function loadSignature(event) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
-    localStorage.setItem(getMedico().sigKey, e.target.result);
+    try { localStorage.setItem(getMedico().sigKey, e.target.result); }
+    catch (err) { flash("⚠ Não foi possível salvar a assinatura (armazenamento cheio ou imagem grande demais). Use uma imagem menor.", true); return; }
     syncSigButtons();
     render();
     flash("✓ Assinatura customizada salva. A padrão continua disponível em 'Restaurar padrão'.");
